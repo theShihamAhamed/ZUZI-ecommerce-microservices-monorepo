@@ -39,8 +39,6 @@
         "targetName": "test"
       },
       "exclude": [
-        "apps/auth-service-e2e/**/*",
-        "apps/api-gateway-e2e/**/*",
         "kafka-service-e2e/**/*"
       ]
     },
