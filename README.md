@@ -43,48 +43,159 @@ A full-stack, production-grade e-commerce platform built on a microservices arch
 
 ## Architecture Overview
 
-```
-┌───────────────────────────────────────────────────────────────────┐
-│                         CLIENT LAYER                              │
-│                                                                   │
-│  user-ui (:3000)      seller-ui (:3001)      admin-ui (:3002)     │
-└────────────────────────────┬──────────────────────────────────────┘
-                             │  HTTP / WebSocket
-┌────────────────────────────▼──────────────────────────────────────┐
-│                       API GATEWAY (:8090)                         │
-│           Rate Limiting · CORS · Reverse Proxy                    │
-└──────┬──────────┬──────────┬───────────┬────────────┬────────────┘
-       │          │          │           │            │
-  /auth/*    /product/*  /order/*   /admin/*     /chat/*
-  /notification/*    /recommendation/*
-       │          │          │           │            │
-┌──────▼──┐ ┌────▼────┐ ┌───▼───┐ ┌─────▼───┐ ┌─────▼──────────┐
-│  Auth   │ │ Product │ │ Order │ │  Admin  │ │   Chatting     │
-│ Service │ │ Service │ │Service│ │ Service │ │   Service      │
-│  :6001  │ │  :6002  │ │ :6004 │ │  :6005  │ │  :6006 + WS    │
-└────┬────┘ └────┬────┘ └───┬───┘ └────┬────┘ └───────┬────────┘
-     │           │          │          │              │
-     └──────┬────┘          │          │    ┌─────────▼──────────┐
-            │               │          │    │  Recommendation    │
-            │               │          │    │    Service         │
-            │               │          │    │    :6007           │
-            │               │          │    └────────────────────┘
-            │               │          │
-┌───────────▼───────────────▼──────────▼────────────────────────────┐
-│                    INFRASTRUCTURE LAYER                           │
-│                                                                   │
-│   MongoDB (Prisma)    Redis (ioredis)    Apache Kafka (KafkaJS)   │
-│         └────────────────────────────────────────┘               │
-│                              │                                    │
-│               ┌──────────────▼────────────────┐                  │
-│               │  Kafka Service  (Consumer)     │  Notification   │
-│               │  Analytics Processor           │  Service :6009  │
-│               └────────────────────────────────┘                 │
-└───────────────────────────────────────────────────────────────────┘
+Zuzi is an Nx monorepo with three Next.js frontend apps, an Express API Gateway, independently runnable backend microservices, shared packages for cross-service infrastructure, and external systems for payments, messaging, email, file storage, caching, and analytics. Frontend HTTP traffic is routed through the API Gateway, while realtime chat uses Socket.IO directly against the chatting service.
+
+```mermaid
+flowchart LR
+  subgraph FrontendApps[Frontend Apps]
+    UserUI[User UI<br/>Next.js :3000]
+    SellerUI[Seller UI<br/>Next.js :3001]
+    AdminUI[Admin UI<br/>Next.js :3002]
+  end
+
+  Gateway[API Gateway<br/>Express :8090]
+
+  subgraph BackendServices[Backend Microservices]
+    Auth[Auth Service<br/>:6001]
+    Product[Product Service<br/>:6002]
+    Order[Order Service<br/>:6004]
+    Admin[Admin Service<br/>:6005]
+    Chat[Chatting Service<br/>REST + Socket.IO :6006]
+    Recommend[Recommendation Service<br/>:6007<br/>@tensorflow/tfjs]
+    Logger[Logger Service<br/>standalone :6008]
+    Notify[Notification Service<br/>:6009]
+    Analytics[Kafka Service<br/>analytics worker]
+  end
+
+  subgraph SharedPackages[Shared Packages]
+    PrismaClient[packages/libs/prisma<br/>Prisma Client]
+    AuthMiddleware[packages/middleware<br/>user/seller auth]
+    KafkaClient[packages/utils/kafka<br/>KafkaJS client]
+    RedisClient[packages/libs/redis<br/>Redis client]
+    ImageKitClient[packages/libs/imageKit<br/>ImageKit client]
+    EmailHelper[packages/utils/email<br/>SMTP helper]
+    PricingHelper[packages/libs/product-pricing<br/>effective price helper]
+    ErrorHandler[packages/error-handler<br/>shared errors]
+    SharedComponents[packages/components<br/>shared UI]
+  end
+
+  subgraph DataStores[Persistence And Cache]
+    Mongo[(MongoDB<br/>via Prisma)]
+    Redis[(Redis)]
+  end
+
+  subgraph Messaging[Event Streaming]
+    Kafka[(Kafka)]
+    UsersEvents[users-events]
+    NotificationEvents[notification.events]
+    ChatTopic[chat.new_message]
+  end
+
+  subgraph ExternalSystems[External Systems]
+    Stripe[Stripe<br/>Checkout, webhooks, Connect]
+    ImageKit[ImageKit<br/>media storage]
+    SMTP[SMTP Email]
+  end
+
+  UserUI -->|HTTP API| Gateway
+  SellerUI -->|HTTP API| Gateway
+  AdminUI -->|HTTP API| Gateway
+  UserUI -.->|Socket.IO chat| Chat
+  SellerUI -.->|Socket.IO chat| Chat
+  UserUI -.->|server action analytics| KafkaClient
+  UserUI -.->|shared UI usage| SharedComponents
+  SellerUI -.->|shared UI usage| SharedComponents
+
+  Gateway -->|/product/* -> :6002| Product
+  Gateway -->|/order/* -> :6004| Order
+  Gateway -->|/admin/* -> :6005| Admin
+  Gateway -->|/chat/* -> :6006| Chat
+  Gateway -->|/notification/* -> :6009| Notify
+  Gateway -->|/recommendation/* -> :6007| Recommend
+  Gateway -->|fallback routes, including /api auth -> :6001| Auth
+
+  Auth --> PrismaClient
+  Product --> PrismaClient
+  Order --> PrismaClient
+  Admin --> PrismaClient
+  Chat --> PrismaClient
+  Recommend --> PrismaClient
+  Notify --> PrismaClient
+  Analytics --> PrismaClient
+  PrismaClient --> Mongo
+
+  Auth -.-> AuthMiddleware
+  Product -.-> AuthMiddleware
+  Order -.-> AuthMiddleware
+  Chat -.-> AuthMiddleware
+  Notify -.-> AuthMiddleware
+
+  Auth --> RedisClient
+  Order --> RedisClient
+  Chat --> RedisClient
+  RedisClient --> Redis
+
+  UserUI -->|Stripe.js checkout UI| Stripe
+  Auth -->|seller Connect onboarding| Stripe
+  Order -->|payment intents + webhook /order/api/create-order| Stripe
+
+  Product --> ImageKitClient
+  Chat --> ImageKitClient
+  ImageKitClient --> ImageKit
+
+  Auth -->|OTP/password emails| SMTP
+  Order --> EmailHelper
+  EmailHelper --> SMTP
+
+  Product -.-> PricingHelper
+  Order -.-> PricingHelper
+  Product -.-> ErrorHandler
+  Order -.-> ErrorHandler
+  Auth -.-> ErrorHandler
+  Chat -.-> ErrorHandler
+  Notify -.-> ErrorHandler
+
+  KafkaClient --> Kafka
+  Kafka --> UsersEvents
+  Kafka --> NotificationEvents
+  Kafka --> ChatTopic
+  UsersEvents --> Analytics
+  NotificationEvents --> Notify
+  Chat -->|produce/consume chat messages| ChatTopic
+  Order -->|order/payment notifications| NotificationEvents
+  Product -->|review/product notifications| NotificationEvents
+  Analytics -->|product, user, shop analytics| Mongo
+  Recommend -->|cached recommendations from userAnalytics| Mongo
 ```
 
-All client requests enter through the **API Gateway**, which applies rate limiting and CORS, then proxies to the appropriate downstream service. Backend services share a single **MongoDB** database via Prisma, use **Redis** for caching and session management, and communicate asynchronously through **Apache Kafka**.
+### Backend Event/Data Flow
 
+```mermaid
+flowchart LR
+  UserActions[User UI actions<br/>views, cart, wishlist, shop visits] -->|Kafka users-events| AnalyticsWorker[Kafka Service]
+  AnalyticsWorker -->|writes userAnalytics,<br/>productAnalytics,<br/>shopAnalytics,<br/>shopDailyAnalytics| Mongo[(MongoDB)]
+
+  RecommendationGet[GET /recommendation/api/products] --> RecommendService[Recommendation Service]
+  RecommendService -->|read cached userAnalytics.recommendations| Mongo
+  RecommendService -.->|missing or stale cache<br/>background retraining| Training[TensorFlow.js hybrid trainer]
+  Training -->|updates recommendation cache| Mongo
+
+  Checkout[User checkout] -->|/order/api/create-payment-session| OrderService[Order Service]
+  OrderService -->|PaymentIntent| Stripe[Stripe]
+  Stripe -->|webhook /order/api/create-order| OrderService
+  OrderService -->|orders, payments, commissions| Mongo
+  OrderService -->|notification.events| NotificationTopic[Kafka notification.events]
+
+  ProductService[Product Service] -->|review/product notifications| NotificationTopic
+  NotificationTopic --> NotificationService[Notification Service]
+  NotificationService -->|stores recipient notifications| Mongo
+
+  UserChat[User/Seller chat clients] <-->|Socket.IO| ChatService[Chatting Service]
+  ChatService -->|chat.new_message| ChatTopic[Kafka chat.new_message]
+  ChatTopic -->|batch persistence| ChatService
+  ChatService -->|messages, conversations| Mongo
+  ChatService -->|presence and unread mirror| Redis[(Redis)]
+```
 ---
 
 ## Technology Stack
