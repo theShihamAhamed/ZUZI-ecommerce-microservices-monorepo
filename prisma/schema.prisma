@@ -1,0 +1,537 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+type ImageAsset {
+  url    String
+  fileId String
+}
+
+
+model user {
+  id                String            @id @default(auto()) @map("_id") @db.ObjectId
+  email             String            @unique
+  name              String
+  password          String?
+  following         String[]
+  avatar            ImageAsset?
+  shippingAddresses shippingAddress[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model shippingAddress {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  userId       String   @db.ObjectId
+  user         user     @relation(fields: [userId], references: [id])
+  fullName     String
+  phone        String
+  addressLine1 String
+  addressLine2 String?
+  city         String
+  state        String?
+  postalCode   String
+  country      String
+  isDefault    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+}
+
+type cartItem {
+  productId          String   @db.ObjectId
+  quantity           Int
+  selectedOptions    Json?
+  selectedOptionsKey String
+  createdAt          DateTime
+  updatedAt          DateTime
+}
+
+model cart {
+  id        String     @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String     @unique @db.ObjectId
+  items     cartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+enum SellerStatus {
+  PENDING
+  EMAIL_VERIFIED
+  SHOP_CREATED
+  ACTIVE
+}
+
+model seller {
+  id           String @id @default(auto()) @map("_id") @db.ObjectId
+  name         String
+  email        String @unique
+  password     String
+  phone_number String
+  country      String
+  avatar       ImageAsset?
+
+  stripeId String?
+  status   SellerStatus @default(PENDING)
+
+  shop shop?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model shop {
+  id            String  @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  bio           String?
+  category      String
+  avatar        ImageAsset?
+  coverBanner   ImageAsset?
+  address       String
+  opening_hours String?
+  website       String?
+  socialLinks   Json[]
+  ratings       Float   @default(0)
+  reviewCount   Int     @default(0)
+
+  sellerId String @unique @db.ObjectId
+  seller   seller @relation(fields: [sellerId], references: [id])
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  products  products[]
+}
+
+model site_configs {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  categories    String[]
+  subCategories Json
+}
+
+model discount_codes {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  public_name   String
+  discountType  String
+  discountValue Float
+  discountCode  String   @unique
+  sellerId      String   @db.ObjectId
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+enum productStatus {
+  Active
+  Pending
+  Draft
+}
+
+enum ReviewStatus {
+  Published
+  Hidden
+  Reported
+  Deleted
+}
+
+enum ReviewRequestStatus {
+  Pending
+  Used
+  Expired
+  Revoked
+}
+
+enum OrderStatus {
+  Ordered
+  Packed
+  Paid
+  Processing
+  Shipped
+  OutForDelivery
+  Delivered
+  Cancelled
+  Refunded
+}
+
+enum PaymentStatus {
+  Pending
+  Succeeded
+  Failed
+  Refunded
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+}
+
+enum AdminStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum CommissionStatus {
+  Pending
+  Earned
+  Reversed
+  Refunded
+}
+
+enum ChatParticipantType {
+  user
+  seller
+}
+
+enum ChatMessageStatus {
+  Sent
+  Delivered
+  Seen
+}
+
+model admin {
+  id          String      @id @default(auto()) @map("_id") @db.ObjectId
+  name        String
+  email       String      @unique
+  password    String
+  role        AdminRole   @default(ADMIN)
+  status      AdminStatus @default(ACTIVE)
+  lastLoginAt DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model products {
+  id                    String        @id @default(auto()) @map("_id") @db.ObjectId
+  title                 String
+  slug                  String        @unique
+  category              String
+  subCategory           String
+  short_description     String
+  detailed_description  String
+  images                ImageAsset[]
+  video_url             String?
+  tags                  String[]
+  brand                 String?
+  colors                String[]
+  sizes                 String[]      @default([])
+  starting_date         DateTime?
+  ending_date           DateTime?
+  isEvent               Boolean       @default(false)
+  event_sale_price      Float?
+  stock                 Int
+  sale_price            Float
+  regular_price         Float
+  totalSales            Int           @default(0)
+  ratings               Float         @default(5)
+  reviewCount           Int           @default(0)
+  warranty              String?
+  custom_specifications Json?
+  custom_properties     Json
+  isDeleted             Boolean?      @default(false)
+  cashOnDelivery        String?
+  discount_codes        String[]      @db.ObjectId
+  status                productStatus @default(Active)
+  deletedAt             DateTime?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  shopId                String        @db.ObjectId
+  shop                  shop          @relation(fields: [shopId], references: [id])
+}
+
+model productReview {
+  id          String       @id @default(auto()) @map("_id") @db.ObjectId
+  productId   String       @db.ObjectId
+  userId      String       @db.ObjectId
+  orderId     String       @db.ObjectId
+  orderItemId String       @unique @db.ObjectId
+  sellerId    String       @db.ObjectId
+  shopId      String       @db.ObjectId
+  rating      Int
+  title       String?
+  comment     String?
+  status      ReviewStatus @default(Published)
+  sellerReply String?
+  repliedAt   DateTime?
+  reportedAt  DateTime?
+  hiddenAt    DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([productId, status, createdAt])
+  @@index([shopId, status, createdAt])
+  @@index([sellerId, createdAt])
+  @@index([userId, createdAt])
+  @@index([rating])
+}
+
+model reviewRequest {
+  id                 String              @id @default(auto()) @map("_id") @db.ObjectId
+  publicId           String              @unique
+  tokenHash          String              @unique
+  userId             String              @db.ObjectId
+  productId          String              @db.ObjectId
+  orderId            String              @db.ObjectId
+  orderItemId        String              @unique @db.ObjectId
+  sellerId           String              @db.ObjectId
+  shopId             String              @db.ObjectId
+  reviewId           String?             @db.ObjectId
+  status             ReviewRequestStatus @default(Pending)
+  expiresAt          DateTime
+  usedAt             DateTime?
+  notificationSentAt DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([userId, status, createdAt])
+  @@index([productId])
+  @@index([sellerId])
+  @@index([shopId])
+  @@index([orderId])
+  @@index([expiresAt])
+}
+
+type userAnalyticsAction {
+  action     String
+  productId  String?  @db.ObjectId
+  shopId     String?  @db.ObjectId
+  city       String?
+  country    String?
+  device     String?
+  deviceInfo String?
+  createdAt  DateTime
+}
+
+model userAnalytics {
+  id                           String                @id @default(auto()) @map("_id") @db.ObjectId
+  userId                       String                @unique @db.ObjectId
+  actions                      userAnalyticsAction[]
+  recommendations              String[]              @db.ObjectId @default([])
+  recommendationsLastTrained   DateTime?
+  recommendationModelVersion   String?
+  recommendationActionCount    Int                   @default(0)
+  recommendationExpiresAt      DateTime?
+  recommendationTrainingStatus String?
+  recommendationTrainingError  String?
+  city                         String?
+  country                      String?
+  device                       String?
+  deviceInfo                   String?
+  lastActivityAt               DateTime
+  createdAt                    DateTime              @default(now())
+  updatedAt                    DateTime              @updatedAt
+}
+
+model productAnalytics {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  productId    String    @unique @db.ObjectId
+  shopId       String?   @db.ObjectId
+  views        Int       @default(0)
+  cartAdds     Int       @default(0)
+  wishListAdds Int       @default(0)
+  purchases    Int       @default(0)
+  lastViewedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model shopAnalytics {
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  shopId         String    @unique @db.ObjectId
+  sellerId       String?   @db.ObjectId
+  totalVisits    Int       @default(0)
+  loggedInVisits Int       @default(0)
+  guestVisits    Int       @default(0)
+  lastVisitedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([sellerId])
+  @@index([lastVisitedAt])
+}
+
+model shopDailyAnalytics {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  shopId         String   @db.ObjectId
+  sellerId       String?  @db.ObjectId
+  date           String
+  totalVisits    Int      @default(0)
+  loggedInVisits Int      @default(0)
+  guestVisits    Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([shopId, date])
+  @@index([sellerId])
+  @@index([date])
+}
+
+model orderPayment {
+  id              String        @id @default(auto()) @map("_id") @db.ObjectId
+  userId          String        @db.ObjectId
+  sessionId       String        @unique
+  paymentIntentId String        @unique
+  stripeEventId   String?
+  subtotal        Float
+  discountAmount  Float         @default(0)
+  total           Float
+  currency        String        @default("usd")
+  paymentStatus   PaymentStatus @default(Pending)
+  buyerEmailSentAt DateTime?
+  adminNotificationCreatedAt DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([userId])
+}
+
+model platformCommission {
+  id                     String           @id @default(auto()) @map("_id") @db.ObjectId
+  orderId                String           @unique @db.ObjectId
+  orderPaymentId         String?          @db.ObjectId
+  sessionId              String
+  paymentIntentId        String
+  sellerId               String           @db.ObjectId
+  shopId                 String           @db.ObjectId
+  commissionRate         Float
+  commissionBase         Float
+  commissionAmount       Float
+  sellerReceivableAmount Float
+  currency               String           @default("usd")
+  status                 CommissionStatus @default(Pending)
+  recognizedAt           DateTime?
+  reversedAt             DateTime?
+  refundedAt             DateTime?
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  @@index([sellerId])
+  @@index([shopId])
+  @@index([sessionId])
+  @@index([paymentIntentId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model orders {
+  id                String        @id @default(auto()) @map("_id") @db.ObjectId
+  orderNumber       String?
+  orderGroupId      String?
+  userId            String        @db.ObjectId
+  shopId            String        @db.ObjectId
+  sellerId          String        @db.ObjectId
+  shippingAddressId String?       @db.ObjectId
+  shippingAddressSnapshot Json?
+  sessionId         String
+  paymentIntentId   String
+  couponCode        String?
+  subtotal          Float
+  discountAmount    Float         @default(0)
+  total             Float
+  currency          String        @default("usd")
+  status            OrderStatus   @default(Ordered)
+  paymentStatus     PaymentStatus @default(Succeeded)
+  statusHistory     Json[]
+  sellerNotificationCreatedAt DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  @@index([orderNumber])
+  @@index([orderGroupId])
+  @@index([userId])
+  @@index([userId, createdAt])
+  @@index([shopId])
+  @@index([sellerId])
+  @@index([sellerId, createdAt])
+  @@index([sellerId, status])
+  @@index([sessionId])
+  @@index([paymentIntentId])
+}
+
+model orderItems {
+  id              String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId         String   @db.ObjectId
+  productId       String   @db.ObjectId
+  title           String
+  imageUrl        String?
+  quantity        Int
+  unitPrice       Float
+  total           Float
+  selectedOptions Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model conversation {
+  id                    String               @id @default(auto()) @map("_id") @db.ObjectId
+  conversationKey       String               @unique
+  userId                String               @db.ObjectId
+  sellerId              String               @db.ObjectId
+  shopId                String?              @db.ObjectId
+  productId             String?              @db.ObjectId
+  lastMessageId         String?              @db.ObjectId
+  lastMessageText       String?
+  lastMessageAt         DateTime?
+  lastMessageSenderType ChatParticipantType?
+  userUnreadCount       Int                  @default(0)
+  sellerUnreadCount     Int                  @default(0)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  @@index([userId, updatedAt])
+  @@index([sellerId, updatedAt])
+  @@index([shopId])
+  @@index([productId])
+}
+
+model chatMessage {
+  id              String              @id @default(auto()) @map("_id") @db.ObjectId
+  clientMessageId String              @unique
+  conversationId  String              @db.ObjectId
+  senderId        String              @db.ObjectId
+  senderType      ChatParticipantType
+  content         String?
+  attachments     Json[]
+  status          ChatMessageStatus   @default(Sent)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@index([conversationId, createdAt])
+  @@index([senderId, senderType])
+}
+
+model notifications {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  creatorId     String?  @db.ObjectId
+  receiverId    String?  @db.ObjectId
+  receiverRole  String?
+  recipientId   String?  @db.ObjectId
+  recipientType String?
+  title         String
+  message       String
+  redirect_link String?
+  redirectUrl   String?
+  data          Json?
+  read          Boolean  @default(false)
+  isRead        Boolean  @default(false)
+  readAt        DateTime?
+  dedupeKey     String?
+  type          String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([receiverId])
+  @@index([receiverRole])
+  @@index([recipientId, recipientType, createdAt])
+  @@index([recipientId, recipientType, isRead])
+  @@index([dedupeKey])
+  @@index([read])
+  @@index([createdAt])
+}

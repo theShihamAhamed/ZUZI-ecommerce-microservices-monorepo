@@ -1,0 +1,82 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Nx
+.nx/
+dist/
+out-tsc/
+tmp/
+test-output/
+
+# Next.js
+.next/
+out/
+apps/**/.next/
+apps/**/out/
+
+# Build outputs
+build/
+coverage/
+*.tsbuildinfo
+*.buildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+apps/**/.env
+apps/**/.env.*
+!apps/**/.env.example
+!apps/**/.env.*.example
+
+# Local verification and temp artifacts
+.manual-verification-logs/
+uploads/
+public/uploads/
+apps/**/uploads/
+apps/**/tmp/
+*.local
+
+# Prisma
+# Keep prisma/schema.prisma committed. Ignore generated/local client output only.
+generated/
+/generated/prisma/
+prisma/*.db
+prisma/*.db-journal
+prisma/dev.db*
+
+# Stripe local files
+.stripe/
+stripe.log
+
+# Docker local overrides
+docker-compose.override.yml
+docker-compose.*.local.yml
+
+# Editors and OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Misc tooling caches
+.sass-cache/
+.cache/
+connect.lock
+libpeerconnection.log
+typings/
